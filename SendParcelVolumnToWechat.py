@@ -25,7 +25,7 @@ route_to_chat = {
     "450009": "🚛BS 【1276】- BUF"
 }
 
-skip_today = ["450001", "450002", "450004", "450006", "450007", "450008", "450009"]
+skip_today = ["450003", "450005"]
 
 # =====================
 # gspread setup section
@@ -59,7 +59,7 @@ def get_non_zero_by_header(data, header):
 
 data = sheet.get_all_records()
 
-print("Parcel volumn data: ", data)
+print("Parcel volume data: ", data)
 
 # =====================
 # send messages to WeChat section
@@ -83,7 +83,7 @@ def send_route_messages_to_chats(data, route_to_chat, skip_routes=None):
         # Format message
         total = sum(row[route] for row in non_zero_rows)
         today = datetime.today().strftime("%m/%d")
-        lines = [f"{today} {route} tomorrow volumn forecast: {total}", "------"]
+        lines = [f"{today} {route} tomorrow volume forecast: {total}", "------"]
         for row in non_zero_rows:
             lines.append(f"{row['Sub Batch']}: {row[route]}")
         message = "\n".join(lines)

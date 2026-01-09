@@ -68,7 +68,7 @@ print("today_delivery_record:", valid_delivery_record)
 # =============================
 #  Selenium setup section
 # =============================
-driver = init_chrome_driver()
+driver = init_chrome_driver(keep_open=False)
 sleeptime = 3 
 wait = WebDriverWait(driver, 10)
 
@@ -230,9 +230,10 @@ def prepare_complete_rate_report(complete_rate_list):
         df[col] = pd.to_numeric(df[col])
     
     # Driver-level derived columns
-    df["total_volumn"] = df[["202","211","231","232","203"]].sum(axis=1)
-    df["return_volumn"] = df[["211","231","232"]].sum(axis=1)
-    df["return_rate"] = df["return_volumn"] / df["total_volumn"]
+    df["total_volume"] = df[["202","211","231","232","203"]].sum(axis=1)
+    df["return_volume"] = df[["211","231","232"]].sum(axis=1)
+    df["return_rate"] = df["return_volume"] / df["total_volume"]
+    df["complete_rate"] = df["complete_rate"] * 0.01  # percentage
     
     # Count drivers under 95% (used later for group-level)
     df["under_95_driver"] = df["complete_rate"] < 95
@@ -242,10 +243,10 @@ def prepare_complete_rate_report(complete_rate_list):
     df_group = df.groupby("DSP")[agg_cols].sum().reset_index()
     batch_per_dsp = df.groupby("DSP")["Batch Number"].apply(lambda x: ", ".join(map(str, x.unique()))).reset_index()
     df_group = df_group.merge(batch_per_dsp, on="DSP", how="left")
-    df_group["total_volumn"] = df_group[["202","211","231","232","203"]].sum(axis=1)
-    df_group["return_volumn"] = df_group[["211","231","232"]].sum(axis=1)
-    df_group["return_rate"] = df_group["return_volumn"] / df_group["total_volumn"]
-    df_group["complete_rate"] = df_group["203"] / df_group["total_volumn"]
+    df_group["total_volume"] = df_group[["202","211","231","232","203"]].sum(axis=1)
+    df_group["return_volume"] = df_group[["211","231","232"]].sum(axis=1)
+    df_group["return_rate"] = df_group["return_volume"] / df_group["total_volume"]
+    df_group["complete_rate"] = df_group["203"] / df_group["total_volume"]
     
     # Count under-95 drivers per DSP
     under_95_count = df[df["complete_rate"] < 95].groupby("DSP").size().to_dict()
@@ -281,7 +282,7 @@ def prepare_sheet_data(df, date_str):
     # Reorder columns to match your sheet headers
     columns_order = [
         'Date', 'Batch Number', 'DSP', '202', '211', '231', '232', '203',
-        'total_volumn', 'return_rate', 'return_volumn', 'complete_rate',
+        'total_volume', 'return_rate', 'return_volume', 'complete_rate',
         'under_95_driver', 'driver_id', 'Route'
     ]
     # Add missing columns if they don't exist in df
@@ -291,90 +292,90 @@ def prepare_sheet_data(df, date_str):
     df_to_write = df_to_write[columns_order]
     return df_to_write
 
-# Prepare group and driver data
-group_sheet_data = prepare_sheet_data(complete_rate_by_group, today_str)
-driver_sheet_data = prepare_sheet_data(complete_rate_by_driver, today_str)
+# # Prepare group and driver data
+# group_sheet_data = prepare_sheet_data(complete_rate_by_group, today_str)
+# driver_sheet_data = prepare_sheet_data(complete_rate_by_driver, today_str)
 
-# Combine them into a single DataFrame to upload
-sheet_data = pd.concat([group_sheet_data, driver_sheet_data], ignore_index=True)
+# # Combine them into a single DataFrame to upload
+# sheet_data = pd.concat([group_sheet_data, driver_sheet_data], ignore_index=True)
 
-# Convert DataFrame to list of lists (without headers, since headers already exist)
-values_to_append = sheet_data.values.tolist()
+# # Convert DataFrame to list of lists (without headers, since headers already exist)
+# values_to_append = sheet_data.values.tolist()
 
-# Append all rows to the sheet, at the newest row
-target_sheet.append_rows(values_to_append, value_input_option='USER_ENTERED')
-
-
-# =============================
-# Send complete rate report to WeChat chats section
-# =============================
-dsp_to_chat = {
-    "Speedy Sloth": "🚛Speedy Sloth 【1340】-BUF",
-    "LogiPro": "🚛LogiPro【1279】- BUF",
-    "Brothers Shipping": "🚛BS 【1276】- BUF",
-    "KGM": "🚛KGM【1341】-BUF",
-}
-
-focus_wechat()
-
-def send_group_complete_rate_report(df_group, df_driver, dsp_chat_map):
-    """
-    Send group-level complete rate report to corresponding WeChat chats,
-    including driver-level summary.
-
-    Args:
-        df_group (DataFrame): complete_rate_by_group
-        df_driver (DataFrame): complete_rate_by_driver
-        dsp_chat_map (dict): mapping {DSP_name: WeChat_chat_name}
-    """
-    for _, row in df_group.iterrows():
-        dsp_name = row['DSP']
-        if dsp_name not in dsp_chat_map:
-            print(f"No chat found for DSP {dsp_name}, skipping.")
-            continue
-
-        chat_name = dsp_chat_map[dsp_name]
-
-        # Prepare the group report text
-        now_str = datetime.now().strftime("%m/%d/%Y-%H:%M")
-        report = (
-            f"=== {now_str} Complete Rate Report ===\n"
-            f"Batch Number: {row['Batch Number']}\n"
-            f"DSP: {row['DSP']}\n"
-            f"202: {row['202']}\n"
-            f"211: {row['211']}\n"
-            f"213: {row.get('213', 0)}\n"
-            f"231: {row['231']}\n"
-            f"232:  {row['232']}\n"
-            f"Return volumn: {row['return_volumn']}\n"
-            f"Complete Rate: {row['complete_rate']*100:.1f}%\n"
-            f"Number of Driver Didn't Pass 95%: {row['under_95_driver']}\n"
-            f"==================\n"
-            f"=== Driver Level ===\n"
-            f"Driver ID   Complete Rate   Return Rate\n"
-        )
-
-        # Append driver-level info for this DSP
-        df_dsp_drivers = df_driver[df_driver['DSP'] == dsp_name]
-        for _, drv in df_dsp_drivers.iterrows():
-            report += (
-                f"{drv['driver_id']}, "
-                f"         {drv['complete_rate']:.1f}%, "
-                f"         {drv['return_rate']*100:.1f}%\n"
-            )
-
-        # Open the chat
-        open_chat(chat_name)
-        chat_refresh()
-        time.sleep(1)
-
-        # Paste the report
-        pyperclip.copy(report)
-        pyautogui.hotkey('ctrl', 'v')
-        time.sleep(1)
-        pyautogui.press('enter')
-        print(f"Report sent to {chat_name}")
-        time.sleep(1)
+# # Append all rows to the sheet, at the newest row
+# target_sheet.append_rows(values_to_append, value_input_option='USER_ENTERED')
 
 
-send_group_complete_rate_report(complete_rate_by_group, complete_rate_by_driver, dsp_to_chat)
+# # =============================
+# # Send complete rate report to WeChat chats section
+# # =============================
+# dsp_to_chat = {
+#     "Speedy Sloth": "🚛Speedy Sloth 【1340】-BUF",
+#     "LogiPro": "🚛LogiPro【1279】- BUF",
+#     "Brothers Shipping": "🚛BS 【1276】- BUF",
+#     "KGM": "🚛KGM【1341】-BUF",
+# }
+
+# focus_wechat()
+
+# def send_group_complete_rate_report(df_group, df_driver, dsp_chat_map):
+#     """
+#     Send group-level complete rate report to corresponding WeChat chats,
+#     including driver-level summary.
+
+#     Args:
+#         df_group (DataFrame): complete_rate_by_group
+#         df_driver (DataFrame): complete_rate_by_driver
+#         dsp_chat_map (dict): mapping {DSP_name: WeChat_chat_name}
+#     """
+#     for _, row in df_group.iterrows():
+#         dsp_name = row['DSP']
+#         if dsp_name not in dsp_chat_map:
+#             print(f"No chat found for DSP {dsp_name}, skipping.")
+#             continue
+
+#         chat_name = dsp_chat_map[dsp_name]
+
+#         # Prepare the group report text
+#         now_str = datetime.now().strftime("%m/%d/%Y-%H:%M")
+#         report = (
+#             f"=== {now_str} Complete Rate Report ===\n"
+#             f"Batch Number: {row['Batch Number']}\n"
+#             f"DSP: {row['DSP']}\n"
+#             f"202: {row['202']}\n"
+#             f"211: {row['211']}\n"
+#             f"213: {row.get('213', 0)}\n"
+#             f"231: {row['231']}\n"
+#             f"232:  {row['232']}\n"
+#             f"Return volume: {row['return_volume']}\n"
+#             f"Complete Rate: {row['complete_rate']*100:.1f}%\n"
+#             f"Number of Driver Didn't Pass 95%: {row['under_95_driver']}\n"
+#             f"==================\n"
+#             f"=== Driver Level ===\n"
+#             f"Driver ID   Complete Rate   Return Rate\n"
+#         )
+
+#         # Append driver-level info for this DSP
+#         df_dsp_drivers = df_driver[df_driver['DSP'] == dsp_name]
+#         for _, drv in df_dsp_drivers.iterrows():
+#             report += (
+#                 f"{drv['driver_id']}, "
+#                 f"         {drv['complete_rate']:.1f}%, "
+#                 f"         {drv['return_rate']*100:.1f}%\n"
+#             )
+
+#         # Open the chat
+#         open_chat(chat_name)
+#         chat_refresh()
+#         time.sleep(1)
+
+#         # Paste the report
+#         pyperclip.copy(report)
+#         pyautogui.hotkey('ctrl', 'v')
+#         time.sleep(1)
+#         pyautogui.press('enter')
+#         print(f"Report sent to {chat_name}")
+#         time.sleep(1)
+
+
+# send_group_complete_rate_report(complete_rate_by_group, complete_rate_by_driver, dsp_to_chat)
