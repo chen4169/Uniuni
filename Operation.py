@@ -1,3 +1,4 @@
+import datetime
 import time
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -296,6 +297,51 @@ def parse_driver_memo(text: str) -> str:
 
     return text.split("/")[0].strip()
 
+def get_latest_status(driver):
+    """
+    Extract all parcel statuses from the timeline and return the last one.
+
+    Args:
+        driver: Selenium WebDriver instance.
+
+    Returns:
+        str: The latest status, or "NO_STATUS" if none found.
+    """
+    try:
+        # Find all timeline items
+        timeline_items = driver.find_elements(By.XPATH, "//li[contains(@class,'MuiTimelineItem-root')]")
+        all_texts = []
+
+        for li in timeline_items:
+            try:
+                # Navigate to the Paper div inside Content div
+                paper_div = li.find_element(By.XPATH, ".//div[contains(@class,'MuiTimelineContent-root')]//div[contains(@class,'MuiPaper-root')]")
+                
+                # Get all <p> tags inside that paper div
+                p_tags = paper_div.find_elements(By.XPATH, ".//p[contains(@class,'MuiTypography-body2')]")
+                for p in p_tags:
+                    text = p.text.strip()
+                    if text:
+                        all_texts.append(text)
+            except:
+                continue  # skip if structure is missing
+
+        # Regex for statuses (letters, numbers, underscores)
+        status_pattern = re.compile(r"^\d+:\s*[A-Z0-9_]+$", re.IGNORECASE)
+
+        # Filter only valid statuses
+        statuses = [text for text in all_texts if status_pattern.match(text)]
+
+        # Return the last status found
+        if statuses:
+            return statuses[-1]
+        else:
+            return "NO_STATUS"
+
+    except Exception as e:
+        print("Error getting statuses:", e)
+        return "NO_STATUS"
+
 def search_parcel(
     driver,
     parcel_id: str,
@@ -324,7 +370,7 @@ def search_parcel(
     search_input.send_keys(parcel_id, Keys.ENTER)
 
     # small wait for page to update
-    time.sleep(2.5)
+    time.sleep(2)
 
     # ---- Helper to safely get text ----
     def safe(xpath, default="N/A"):
@@ -346,15 +392,8 @@ def search_parcel(
         data["sub_batch"] = safe("//p[.//span[contains(text(),'Sub Batch')]]").replace("Sub Batch:", "").strip()
 
     if get_status:
-        status = "NO_STATUS"
-        try:
-            items = driver.find_elements(By.XPATH, "//p[contains(@class,'MuiTypography-body2')]")
-            valid = [i.text.strip() for i in items if re.match(r"^\d+:\s*[A-Z_]+$", i.text.strip())]
-            if valid:
-                status = valid[-1]
-        except:
-            pass
-        data["status"] = status
+        latest_status = get_latest_status(driver)
+        data["status"] = latest_status
 
     if get_segment:
         try:

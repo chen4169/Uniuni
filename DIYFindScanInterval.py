@@ -9,7 +9,6 @@ wait_timeout: int = 10
 wait = WebDriverWait(driver, wait_timeout)
 #parcel_id="UUS5BN0567412254784"
 
-
 import re
 from datetime import datetime
 
@@ -43,7 +42,7 @@ def debug_check_scan_transit(all_texts, min_minutes=5):
     # ---- Check existence ----
     if not scanned_time or not transit_time:
         print("❌ Missing one or both timestamps")
-        return None, False
+        return None, False, scanned_time, transit_time
 
     # ---- Calculate interval ----
     interval_minutes = abs(

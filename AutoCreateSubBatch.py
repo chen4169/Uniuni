@@ -1,4 +1,5 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
+import datetime as dt
 from Setup import init_chrome_driver, google_sheet_api
 from Operation import *
 
@@ -31,6 +32,7 @@ print("Sub batch written to googel sheet:", sub_batch)
 # Load & Save
 # =============================
 open_new_tab_and_login(driver, DEFAULT_WEBSITE, DEFAULT_USERNAME, DEFAULT_PASSWORD)
+
 time.sleep(wait_time)
 click_load(driver)
 time.sleep(wait_time)
@@ -41,7 +43,7 @@ click_save(driver)
 # =============================
 # Dispatch name
 # =============================
-tomorrow = datetime.today() + timedelta(days=1)
+tomorrow = dt.datetime.today() + timedelta(days=1)
 dispatch_name = tomorrow.strftime("%m-%d") + "deliver"
 input_dispatch_name(driver, dispatch_name)
 time.sleep(wait_time)
