@@ -1,3 +1,4 @@
+import datetime
 import time
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -296,6 +297,52 @@ def parse_driver_memo(text: str) -> str:
 
     return text.split("/")[0].strip()
 
+def get_latest_status(driver):
+    """
+    Extract all parcel statuses from the timeline and return the last one.
+
+    Args:
+        driver: Selenium WebDriver instance.
+
+    Returns:
+        str: The latest status, or "NO_STATUS" if none found.
+    """
+    try:
+        # Find all timeline items
+        timeline_items = driver.find_elements(By.XPATH, "//li[contains(@class,'MuiTimelineItem-root')]")
+        all_texts = []
+
+        for li in timeline_items:
+            try:
+                # Navigate to the Paper div inside Content div
+                paper_div = li.find_element(By.XPATH, ".//div[contains(@class,'MuiTimelineContent-root')]//div[contains(@class,'MuiPaper-root')]")
+                
+                # Get all <p> tags inside that paper div
+                p_tags = paper_div.find_elements(By.XPATH, ".//p[contains(@class,'MuiTypography-body2')]")
+                for p in p_tags:
+                    text = p.text.strip()
+                    if text:
+                        all_texts.append(text)
+            except:
+                continue  # skip if structure is missing
+
+        # Regex for statuses (letters, numbers, underscores)
+        status_pattern = re.compile(r"^\d+:\s*[A-Z0-9_]+$", re.IGNORECASE)
+
+        # Filter only valid statuses
+        statuses = [text for text in all_texts if status_pattern.match(text)]
+
+        # Return the last status found
+        if statuses:
+            return statuses[-1]
+        else:
+            return "NO_STATUS"
+
+    except Exception as e:
+        print("Error getting statuses:", e)
+        return "NO_STATUS"
+
+
 def search_parcel(
     driver,
     parcel_id: str,
@@ -306,6 +353,7 @@ def search_parcel(
     get_segment: bool = True,
     get_storage: bool = True,
     get_driver_memo: bool = True,
+    get_reschedule_delivery_sn: bool = True,
     wait_timeout: int = 10
 ) -> dict:
     """
@@ -324,7 +372,7 @@ def search_parcel(
     search_input.send_keys(parcel_id, Keys.ENTER)
 
     # small wait for page to update
-    time.sleep(2.5)
+    time.sleep(2)
 
     # ---- Helper to safely get text ----
     def safe(xpath, default="N/A"):
@@ -346,15 +394,8 @@ def search_parcel(
         data["sub_batch"] = safe("//p[.//span[contains(text(),'Sub Batch')]]").replace("Sub Batch:", "").strip()
 
     if get_status:
-        status = "NO_STATUS"
-        try:
-            items = driver.find_elements(By.XPATH, "//p[contains(@class,'MuiTypography-body2')]")
-            valid = [i.text.strip() for i in items if re.match(r"^\d+:\s*[A-Z_]+$", i.text.strip())]
-            if valid:
-                status = valid[-1]
-        except:
-            pass
-        data["status"] = status
+        latest_status = get_latest_status(driver)
+        data["status"] = latest_status
 
     if get_segment:
         try:
@@ -373,6 +414,18 @@ def search_parcel(
     if get_driver_memo:
         memo_text = safe("//tr[th[normalize-space()='Driver Memo']]/td[1]", "")
         data["driver_memo"] = parse_driver_memo(memo_text)
+
+    if get_reschedule_delivery_sn:
+        try:
+            reschedule_delivery_sn = wait.until(
+                EC.presence_of_element_located((
+                    By.XPATH,
+                    "//th[normalize-space()='Reschedule Delivery SN']/following-sibling::td"
+                ))
+            ).text.strip()
+            data["reschedule_delivery_sn"] = reschedule_delivery_sn
+        except:
+            data["reschedule_delivery_sn"] = ""
 
     return data
 
@@ -445,8 +498,9 @@ def update_driver_id(driver, driver_id, timeout=10):
         print(f"[ERROR] Failed to change driver ID: {e}")
         return False
 
-def open_operation_and_next_transition(driver, wait):
-    # Click Operation accordion
+def open_operation_and_next_transition(driver, timeout=10):
+    wait = WebDriverWait(driver, timeout)
+
     operation_btn = wait.until(
         EC.element_to_be_clickable(
             (By.XPATH, "//p[text()='Operation']/ancestor::div[@role='button']")
@@ -455,7 +509,16 @@ def open_operation_and_next_transition(driver, wait):
     operation_btn.click()
     time.sleep(2)
 
-    # Open Next Transition dropdown
+    next_transition = wait.until(
+        EC.element_to_be_clickable(
+            (By.XPATH, "//div[@role='button' and @id='nextTransition']")
+        )
+    )
+    next_transition.click()
+    time.sleep(2)
+
+def open_next_transition_dropdown(driver, timeout=10):
+    wait = WebDriverWait(driver, timeout)
     next_transition = wait.until(
         EC.element_to_be_clickable(
             (By.XPATH, "//div[@role='button' and @id='nextTransition']")
@@ -581,6 +644,31 @@ def send_parcel_to_storage(driver, timeout=10):
     except Exception as e:
         print(f"[ERROR] send_parcel_to_storage failed: {e}")
         return False
+
+def click_submit_status(driver, timeout=10, post_sleep=3):
+    """
+    Click the first visible 'Submit' button (used in status dialog).
+
+    Args:
+        driver: Selenium WebDriver
+        timeout (int): max wait time for buttons to appear
+        post_sleep (int): sleep after click (UI settle)
+    """
+    wait = WebDriverWait(driver, timeout)
+
+    submit_buttons = wait.until(
+        EC.presence_of_all_elements_located(
+            (By.XPATH, "//button[.//span[normalize-space()='Submit']]")
+        )
+    )
+
+    for btn in submit_buttons:
+        if btn.is_displayed():
+            driver.execute_script("arguments[0].click();", btn)
+            time.sleep(post_sleep)
+            return True
+
+    return False
 
 
 # ===== Sub Batch Management Operation

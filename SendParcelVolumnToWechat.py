@@ -2,7 +2,7 @@ import pygetwindow
 import pyautogui
 import pyperclip
 import time
-from datetime import datetime
+import datetime as dt
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 import keyboard
@@ -14,18 +14,18 @@ from Operation import *
 
 # config
 route_to_chat = {
-    "450001": "🚛Speedy Sloth 【1340】-BUF",
+    "450001": "文件传输助手",
     "450002": "🚛LogiPro【1279】- BUF",
     "450003": "文件传输助手",
     "450004": "🚛BS 【1276】- BUF",
     "450005": "文件传输助手",
     "450006": "🚛BS 【1276】- BUF",
     "450007": "🚛BS 【1276】- BUF",
-    "450008": "🚛KGM【1341】-BUF",
+    "450008": "文件传输助手",
     "450009": "🚛BS 【1276】- BUF"
 }
 
-skip_today = ["450003", "450005"]
+skip_today = ["450001","450002","450003","450004","450005","450008"]
 
 # =====================
 # gspread setup section
@@ -82,7 +82,7 @@ def send_route_messages_to_chats(data, route_to_chat, skip_routes=None):
 
         # Format message
         total = sum(row[route] for row in non_zero_rows)
-        today = datetime.today().strftime("%m/%d")
+        today = dt.datetime.today().strftime("%m/%d")
         lines = [f"{today} {route} tomorrow volume forecast: {total}", "------"]
         for row in non_zero_rows:
             lines.append(f"{row['Sub Batch']}: {row[route]}")

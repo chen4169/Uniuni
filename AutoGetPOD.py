@@ -1,4 +1,4 @@
-from datetime import datetime
+import datetime as dt
 from Setup import *
 from Operation import *
 
@@ -16,7 +16,7 @@ data = sheet.get_all_records()
 # ====================
 def get_today_str():
     """Return today's date in M/D/YYYY format (no leading zeros)."""
-    today = datetime.today()
+    today = dt.datetime.today()
     return f"{today.month}/{today.day}/{today.year}"
 
 def get_today_delivery_record(data):
@@ -36,7 +36,7 @@ def get_today_delivery_record(data):
             continue
 
         # Normalize Execution Date to string
-        if isinstance(exec_date, datetime):
+        if isinstance(exec_date, dt.datetime):
             exec_date_str = f"{exec_date.month}/{exec_date.day}/{exec_date.year}"
         else:
             exec_date_str = str(exec_date).strip()
